@@ -1,0 +1,9 @@
+# SPORK evaluation harness dependencies.
+# vLLM is required to serve the model (see launch_vllm_qwen.sh) but is intentionally
+# left unpinned here since its install is GPU/CUDA-specific; install it separately.
+
+aiohttp>=3.9
+transformers>=4.40
+numpy>=1.24
+requests>=2.28
+datasets>=2.14
