@@ -2,6 +2,8 @@
 
 ### Self-Speculative Forking to Accelerate Agentic LLM Inference
 
+📄 **Paper:** [arXiv:2607.03333](https://arxiv.org/abs/2607.03333)
+
 SPORK is a self-speculative tool-call probe for LLM agents. While the main
 model is still decoding its chain-of-thought, a lightweight probe speculatively
 predicts the upcoming tool call, dispatches it early, and **overlaps tool
@@ -176,11 +178,8 @@ If you use SPORK in your research, please cite:
   title         = {SPORK: Self-Speculative Forking to Accelerate Agentic LLM Inference},
   author        = {Bai, Huajun and Lv, Weiwei and Zheng, Huichuan and Lu, Youyou and Shu, Jiwu},
   year          = {2026},
-  eprint        = {TBD},
+  eprint        = {2607.03333},
   archivePrefix = {arXiv},
   primaryClass  = {cs.DC}
 }
 ```
-
-The arXiv link (and the final `eprint` ID above) will be added once the
-preprint is live.
