@@ -1,0 +1,244 @@
+{
+  "schema_version": 1,
+  "scope": "CPU byte comparison of included runtime source; not a new GPU measurement",
+  "preparation_source_commit": "da4f234404962b55be4201f287ca3563c4be274a",
+  "public_base_commit": "31d5ab6f0740d5b5aa26e6a745dc97bcff5139a3",
+  "historical_execution_commits": [
+    "32d78df7f0af3a2e22db0e017ce96e735817a718",
+    "d6a3ef6bb3705d30df5b64c69c383750743316e6",
+    "30288017075c783cd83526e731e0458e779fd010"
+  ],
+  "runtime_files": [
+    {
+      "path": "experiments/bfcl/bfcl_spork_eval.py",
+      "sha256": "d8dea0a4fa40bd6b6086209396483af38da88225cb353067bfb30316d992179a",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "experiments/serving/vllm024/serve_v4.py",
+      "sha256": "eeaab761dbec223f010b59a302b8c694c2a62309e6a14404d1b6d85b4cb1a6cc",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "experiments/serving/vllm024/vllm_v4_continue_patch.py",
+      "sha256": "c751c9d7dddb45a7eeb00d0a28e73c8832b8d4b0071423471b5ef0029c0759f8",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "launch_vllm_spork_http.py",
+      "sha256": "d9f944ce3a67c9562f4feabf9a0fb5c4b2ecdf9831dfcee559a0857c77a15ea7",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/__init__.py",
+      "sha256": "7ef21feb44fbb7bec9bf2a50decf4bcc92f5d103a3aa00c14f048288abb73e58",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/adapters.py",
+      "sha256": "f292d8e239aafb0bc56a595aaba085e6e8d4cda9ea7ee3cdb8b2d1e175b51dc8",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/adaptive_scheduler.py",
+      "sha256": "ef3cefc5c2ae4ae7e9632b9c177d01003712e86463c1dd1f74ea050c39f1a178",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/benchmarks/__init__.py",
+      "sha256": "c1d844c0b4688832d72e9453dc996a0c6cec6d1ebd6c260c4f69caa33723b0b8",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/benchmarks/tau2.py",
+      "sha256": "f6b9605b4f74aff3429ee2c0a67a1890bf4984a258478428db46b4eb5b315247",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/deepseek_v4.py",
+      "sha256": "6b0a9401662ee210f80fb4d10fe2539cec35631f7875e7d8c2d95bc619dc7920",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/executors.py",
+      "sha256": "357867916d16915d49a7ccc60920a9dd2c0fa3faa1c48376e12e3cccc2543a25",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/gates.py",
+      "sha256": "a948330deb30920cfd32c01b7c28587adb646a349dc94db4f967a5b54d657bc7",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/glm53.py",
+      "sha256": "21e82efcf47c90c89a640941d8d005aeb08ee9ad7646cc2442957ca0f4dd734e",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/model_setup.py",
+      "sha256": "f8888509ae8adbc67ad4192bbffefc3411421714796a2d56557468e82954b62d",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/paths.py",
+      "sha256": "0ff23e3a696e3b24e9df02df99a45d29d89170392a9ce5f7c37ebf6874448779",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/qwen.py",
+      "sha256": "6bd65df2edbb48c3ec53aec647730af382aeb41a5f409c1cfe6c634796ea35ad",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/spork_proposer.py",
+      "sha256": "cb3b2e2a542cc1949d4ba12d3f3b187734835e4b2e85ece4e628d156cf32fa6c",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/tool_calls.py",
+      "sha256": "3d3ec3115b269f69755ab289d017dc5aece30aafb8afbc17f442e2c59099cc08",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/turn_runner.py",
+      "sha256": "9b34c4bc3710d9cc565588451510ee86a4288a988f28821a905b5965a3d7e551",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_core/vllm_client.py",
+      "sha256": "212c747155730ca464aa3c1b17cc36af2423985212cc69563204fc3a77538885",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "spork_unified_eval.py",
+      "sha256": "a321a13fe4bcc192b8618af5e763a63e03e8a6e460e462fa70e9d62c62ff46a4",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "tau2_tool_parser.py",
+      "sha256": "747e18fe928c2d0cee6c0b721e7784b3e44ddc18b7ffb48cb6a86916a5daa40f",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    },
+    {
+      "path": "tool_backends.py",
+      "sha256": "3d9218d27be9f7d9b75bb673368d59da2abfc2d9aaf90cabc0bb1ea08e2d845a",
+      "identical_to_recorded_commits": {
+        "32d78df7f0af3a2e22db0e017ce96e735817a718": true,
+        "d6a3ef6bb3705d30df5b64c69c383750743316e6": true,
+        "30288017075c783cd83526e731e0458e779fd010": true
+      }
+    }
+  ],
+  "unmodified_artifact_sha256": {
+    "artifact-checks.json": "b47b3803f0a59d36a4fa122df917a724ca6b76eaed7e25edfef80ade44fc7c29",
+    "bfcl-client-runtime.json": "5e2ed70638e40ae3ea9b85189df5b57d51b99668848548af9d7398d4fbe8f770",
+    "bfcl-counts.json": "02eac991b049c7d20b47823faa21c4a7a34c7881b931a449131d86d0cf41899b",
+    "glm-01-bfcl.json": "0d596644cdc174c7d88276405c1d98a7dd63286d702bdb46248e098e29d8d84e",
+    "glm-native-runtime.json": "6ceadb14125ff61aa5721ac18359e0991c9a3710f659053bbb062174653fcbba",
+    "model-fingerprints.json": "5a2a989d26d919b71ae6e9668de7efe8f58f010497b74eae092407b4900da023",
+    "paired-quality-regression.json": "018b4fdb2e412db63c4708972fbd653493a7887c6f3a1fd6c07d19603d33de8f",
+    "qwen-01-bfcl.json": "748deaa0bd92d2067297917931600a7b9e9e796d608737dd28766ea8187b2f55",
+    "qwen35-01-bfcl.json": "e306a4dc1e75d95971986cfaaf4eb5fce284c63b6f1278e2b1b072f2dfc64a46",
+    "receipts.json": "b890a8dee174d1a8553f172915b6ecdb78ad9c2d45dedbbd1bf37de3085cd734",
+    "resource-admission.json": "c67746a26a4be84ea538280f72c4060be26b9ee4a7a9b1daae53767ccaa5ba03",
+    "tau-client-runtime.json": "e1dd90553905b0ec6fb011c3fc908ae4e136e313d5871ab55cfc4ca6ff7380fb",
+    "tau-retail-clone-preflight.json": "8373b51607051bc7a934ab8dab04ce478cf56c5ccded470026b1e57cae1d8053",
+    "tau2-source-hashes.json": "b5ca6b9fb4624724f5977370614769f44862ecb99d200b64bb7a50df4db9f3b2",
+    "v1.0-tau2.json": "abf28b2cb4fcbd15fba2d0b1366533263949bb604253b4b12c0c5dfa031fdeed",
+    "v1.1-tau2.json": "ff37ce1807013a37fbc92c77f1d7aaf8fc607bd8e6986d5cdde004310dbaee9e",
+    "v4-02-bfcl.json": "586ba37960130bedb3caaaf55f121d223360477a455deea24d3b97da80798299",
+    "v4-loader-retry.json": "33e4231b274ae163b779d006fd0143a5add80defa7b4f82e14cc260e0b78623c",
+    "v4-retry-artifact-checks.json": "535e31cba29acf5e72f64dd3ab6a0d216eb617f735e118023b92cb7f8c90af5a",
+    "v4-startup-failure.json": "7d13377e63b5b45fb97a855a00611a6c3093314717e4aee2d142514e16231d17",
+    "vllm024-runtime.json": "3267766df010355c94af9aa1b108ed9143296159d4df97a841ea51074d5d3378"
+  },
+  "excluded": "New request-scoped D3 bridge and dedicated D3 qualification records"
+}

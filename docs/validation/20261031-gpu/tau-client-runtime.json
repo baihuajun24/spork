@@ -1,0 +1,11 @@
+{
+  "python": "3.12.14 (main, Sep  2 2026, 23:27:36) [GCC 15.3.0]",
+  "package_versions": {
+    "transformers": "5.9.0",
+    "torch": "2.10.0",
+    "aiohttp": "3.14.3",
+    "litellm": "1.82.6",
+    "toml": "0.10.2",
+    "pydantic": "2.13.5"
+  }
+}

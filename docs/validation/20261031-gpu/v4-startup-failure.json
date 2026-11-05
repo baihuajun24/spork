@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "code_commit": "d6a3ef6bb3705d30df5b64c69c383750743316e6",
+  "profile": "v4-01",
+  "stage": "model_weight_loading_before_readiness",
+  "server_exit_code": 1,
+  "ready": false,
+  "client_requests_launched": 0,
+  "task_quality": null,
+  "error_type": "KeyError",
+  "error_key": "F8_E8M0",
+  "affected_tp_workers": [
+    0,
+    1
+  ],
+  "loader_frames": [
+    "vllm/model_executor/model_loader/weight_utils.py:914 safetensors_weights_iterator -> load(f.read())",
+    "safetensors/torch.py:387 load -> _view2torch",
+    "safetensors/torch.py:462 _view2torch -> _getdtype",
+    "safetensors/torch.py:456 _getdtype -> _TYPES[dtype_str]"
+  ],
+  "raw_server_log_sha256": "9def18ab6bebd72e8daac6f5d1935938bcd4b7584d1b56acd0e5017bcdc07615",
+  "synthetic_cpu_preflight": {
+    "scope": "CPU-only synthetic 1-element dtype loader preflight; no model weights or GPU allocation",
+    "observed_at_utc": "2026-10-31T15:20:14.804199+00:00",
+    "safetensors_version": "0.8.0",
+    "torch_version": "2.11.0+cu130",
+    "payload_sha256": "982650af0125d38fd1382bd1c702e27b6d61185a5226b53b15d0ebfa016550d4",
+    "eager_load_error": {
+      "type": "KeyError",
+      "message": "'F8_E8M0'"
+    },
+    "safe_open_dtype": "torch.float8_e8m0fnu",
+    "safe_open_shape": [
+      1
+    ],
+    "safetensors_torch_source_sha256": "f3f476d1f8c04fe65fa3797426556a0b7afa43f8c4db9db6b799c7cf84748f3d"
+  },
+  "raw_cpu_preflight_sha256": "7a8b9ad446d893b65f626f9750ba0076310ff44251684187acf087a3184daf06",
+  "synthetic_fixture": {
+    "tensor_name": "x",
+    "dtype": "F8_E8M0",
+    "shape": [
+      1
+    ],
+    "data_offsets": [
+      0,
+      1
+    ],
+    "data_byte": 127,
+    "header_format": "compact JSON padded with spaces to 8 bytes, little-endian uint64 header length"
+  },
+  "remaining": [
+    "GPU model readiness",
+    "native tool-call parsing",
+    "SPORK probe continuation",
+    "main/probe usage",
+    "official task quality"
+  ],
+  "next_step": "Investigate lazy safetensors loader or a compatible loader in an isolated runtime; CPU dtype success does not establish GPU support"
+}

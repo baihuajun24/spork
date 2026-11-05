@@ -1,0 +1,51 @@
+{
+  "scope": "CPU artifact verification and final local GPU release observation; no model requests",
+  "observed_at_utc": "2026-10-31T15:24:05.341411+00:00",
+  "per_task_raw_sha256_matches": 80,
+  "export_cli_semantic_matches": 2,
+  "cooperative_gpu_locks_available": 24,
+  "gpu_compute_process_count": 0,
+  "gpus": [
+    {
+      "index": 0,
+      "memory_used_mib": 4,
+      "gpu_utilization_percent": 0
+    },
+    {
+      "index": 1,
+      "memory_used_mib": 4,
+      "gpu_utilization_percent": 0
+    },
+    {
+      "index": 2,
+      "memory_used_mib": 4,
+      "gpu_utilization_percent": 0
+    },
+    {
+      "index": 3,
+      "memory_used_mib": 4,
+      "gpu_utilization_percent": 0
+    },
+    {
+      "index": 4,
+      "memory_used_mib": 4,
+      "gpu_utilization_percent": 0
+    },
+    {
+      "index": 5,
+      "memory_used_mib": 4,
+      "gpu_utilization_percent": 0
+    },
+    {
+      "index": 6,
+      "memory_used_mib": 4,
+      "gpu_utilization_percent": 0
+    },
+    {
+      "index": 7,
+      "memory_used_mib": 4,
+      "gpu_utilization_percent": 0
+    }
+  ],
+  "core_bfcl_unified_unchanged_32d78df_to_d6a3ef6": true
+}

@@ -70,11 +70,75 @@ variants via `--configs`:
 - `d1` (alias `spork`) — speculative probe + early tool dispatch (D1).
 - `d1_d2` — D1 plus adaptive re-probing during decode (D2).
 - `d1_d2_d3` — D1+D2 plus draft-token injection to accelerate main decode (D3).
+- `portfolio` — T1+T16 candidate pool: dispatch parsed candidates on isolated
+  tool snapshots, then commit the earliest-dispatched candidate with a strict
+  tool-name and typed-argument match. Other candidate states are discarded.
+
+```bash
+python3 spork_unified_eval.py \
+  --model-url http://localhost:8000/v1 --model-name qwen3-32b \
+  --model-family qwen --tokenizer-path Qwen/Qwen3-32B \
+  --benchmark tau2 --configs baseline,portfolio --n 10 \
+  --probe-token-targets 1,16
+```
+
+`--probe-after-tokens` controls the single D1 fork. For retry configs,
+`--probe-token-targets` supplies explicit depths; `--candidate-pool` retains
+the candidates, and `--dispatch-all-parsed` bypasses the confidence filter.
+The `portfolio` preset enables both pool options and defaults to `1,16`.
+Depths count output-stream deltas, **not exact tokenizer positions**. Baseline
+continues to run without probes or speculative tool calls. Candidate pools
+require an executor with isolated speculative state.
 
 **Serve-mode requirement:** `baseline`/`d1`/`d1_d2` run on the **plain** server
 (`launch_vllm_qwen.sh`); `d1_d2_d3` requires the **SPORK-HTTP** server
 (`launch_vllm_qwen_spork.sh`, which adds ngram spec-dec + the draft-injection
 sidecar). See **Serving the model**.
+
+## Model adapters and configurable candidates
+
+This update adds native DeepSeek/GLM adapters, configurable fork
+depths, candidate pools, robust tool-call history, and main/probe usage records.
+Start with `python3 examples/offline_minimal.py` for a CPU-only example.
+Original config fields retain their order and defaults; new strategy fields
+are appended and disabled by default. `--model-family auto` retains the v1.0
+Qwen adapter selection. Streaming completion requests now explicitly ask for
+usage with `stream_options.include_usage`; other default request fields remain
+unchanged. Reasoning-specific request options are enabled explicitly for the
+new chat model families. This update also fixes missing chat usage propagation:
+both streaming main responses and nonstreaming chat probes retain usage when
+the endpoint provides it; absent usage remains unknown.
+
+| Model | Explicit family / tool grammar | Serving setup used for development |
+|---|---|---|
+| Qwen3 | `qwen`, JSON | Legacy vLLM 0.19.1 path; newer example path prepared for 0.24.0 |
+| Qwen3.5-35B-A3B | `qwen35`, JSON with an explicitly compatible renderer tokenizer | vLLM 0.24.0; serving tokenizer owns the 248058 boundary ID |
+| DeepSeek-V4-Flash | `deepseek_v4`, native chat / DSML | vLLM 0.24.0; `deepseek_v4` tool and reasoning parsers; continuation patch below |
+| GLM-5.3-Flash | `glm53`, native chat / XML | vLLM `0.28.1rc1.dev451+g1970f3ed4`, Transformers 5.16.1; `glm47` tool parser and `glm45` reasoning parser |
+
+These are separate serving environments, not a single dependency lock. Fresh
+GPU smoke observations and remaining checks are recorded in the
+[validation checklist](docs/VALIDATION.md) and the
+[GPU report with reproduction commands](docs/validation/20261031-gpu/README.md).
+The small samples include quality failures and do not establish speedups or
+quality equivalence.
+The existing results table above is unchanged. No new cross-model performance
+claim is attached to these adapter additions.
+
+For native chat families, pass `--model-family deepseek_v4` or `glm53` and the
+corresponding served model name. A client-side tokenizer is optional there;
+`--tokenizer-path none` uses server rendering. Qwen families require a tokenizer
+whose rendered tool grammar matches the adapter. Explicit `qwen35` selects the
+JSON adapter; `auto` retains the older name-based XML adapter selection.
+The legacy `d1_d2_d3` and cross-model entrypoints remain Qwen-only.
+The new request-scoped D3 bridge is deferred to a separate update. Full
+GLM-5.3 is not included in the validated support matrix.
+
+Additional examples:
+
+- [Standalone BFCL runner and official scoring](experiments/bfcl/README.md).
+- [Optional vLLM 0.24 V4 continuation patch](experiments/serving/vllm024/README.md).
+- [CPU regression tests and GPU smoke observations](docs/VALIDATION.md).
 
 ## Prerequisites
 

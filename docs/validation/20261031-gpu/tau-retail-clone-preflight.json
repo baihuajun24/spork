@@ -1,0 +1,8 @@
+{
+  "scope": "CPU-only actual retail simulator snapshot compatibility; no tool or model call",
+  "deepcopy_succeeded": true,
+  "tools_independent": true,
+  "wall_s": 3.699054479598999,
+  "code_commit": "d6a3ef6bb3705d30df5b64c69c383750743316e6",
+  "tau2_commit": "2174a603f6d014ef94473ffa95957f6ce27100db"
+}

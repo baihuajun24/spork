@@ -1,0 +1,22 @@
+{
+  "python": "3.11.13 | packaged by conda-forge | (main, Jun  4 2025, 14:48:23) [GCC 13.3.0]",
+  "package_versions": {
+    "vllm": "0.28.1rc1.dev451+g1970f3ed4",
+    "transformers": "5.16.1",
+    "torch": "2.13.0",
+    "flashinfer-python": "0.6.18"
+  },
+  "vllm_source_sha256": {
+    "entrypoints/openai/chat_completion/serving.py": "ea1f76074a9587c8054f54d30a6ba748b6a5fc4d90dd82c801504505c1da1f92",
+    "entrypoints/openai/completion/serving.py": "75d05ddddf303734a078a3e42fcb173fef58ea56da09bc0b5c7525cb9bbbf527",
+    "entrypoints/openai/models/serving.py": "2028c0f57d27cd8bb02ab25449855fbd5ae46818b4fb13217369f8feb0abd029",
+    "entrypoints/openai/responses/serving.py": "b22caeb63277843bca3547b1334034896f1fc397ba45e3efd188af33f2b64df0",
+    "tokenizers/deepseek_v4.py": "3fa2754daf5c215d123b7a061a1d57e98936ec9ec331709bc554f2226ea68a2c",
+    "tool_parsers/deepseekv4_engine_tool_parser.py": "fd1b9a4f51a3234ce9fdc318da05de7c4b88ef2ffca95f1c4932474dd6a123c1",
+    "tool_parsers/glm47_moe_tool_parser.py": "c4df8aa4654aa92224f8347625c8bc5caaeb03aa00361c9f997e704b21d9b1c5",
+    "v1/core/sched/scheduler.py": "e5e1c18b1d7a6ea73adbb4921f64a35b00a96abe673691bf6a7f57281a524519",
+    "v1/spec_decode/ngram_proposer.py": "5051e1bca645fe4befec0a6340f0dfc169fbcbe070ac1da508b72f8ee9c91736",
+    "v1/worker/gpu_model_runner.py": "5c246e2c6c2178d98df69bc3b6a63b44cd815eb129547051816782bcd3cd00b4",
+    "v1/worker/gpu_worker.py": "1bdec801f0d03dcbb3d152678febf0b7ec9bc322def1b0fb43d3ee950f2d0f14"
+  }
+}

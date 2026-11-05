@@ -1,0 +1,25 @@
+[
+  {
+    "profile": "v4",
+    "attempt_unit": "CPU-only dry-run admission check, not a GPU task",
+    "first_check_utc": "2026-10-31T02:07:10.557212+00:00",
+    "last_check_utc": "2026-10-31T03:21:19.183868+00:00",
+    "categories": {
+      "insufficient_host_memory_or_cpu": 293,
+      "accepted": 1
+    },
+    "skipped_after_primary": false,
+    "raw_admission_log_sha256": "d7d52e0eaacf602111a9ea70a95d4a8df2325a480ce8e83a686740f4e811e859"
+  },
+  {
+    "profile": "glm",
+    "attempt_unit": "CPU-only dry-run admission check, not a GPU task",
+    "first_check_utc": "2026-10-31T03:21:59.094725+00:00",
+    "last_check_utc": "2026-10-31T03:21:59.094725+00:00",
+    "categories": {
+      "accepted": 1
+    },
+    "skipped_after_primary": false,
+    "raw_admission_log_sha256": "dafa45cd2d78fe5b18762ef87c0f0bec26c9ded561e75c26177ab4ab87a4d1d4"
+  }
+]
