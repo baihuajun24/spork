@@ -17,6 +17,7 @@ class SpeculativeToolExecution:
     real_wall_s: float
     artificial_sleep_s: float
     state: Any = None
+    trace: dict[str, float] | None = None
 
 
 class ToolExecutor(Protocol):
@@ -235,21 +236,35 @@ class Tau2ToolExecutor:
         return text, wall
 
     def execute_speculative(self, tool_call: dict) -> SpeculativeToolExecution:
+        snapshot_start_s = time.time()
         spec_env = copy.deepcopy(self.env)
+        snapshot_end_s = time.time()
+        worker_start_s = time.time()
         text, wall, real_wall, artificial_sleep = self._execute_on_env(spec_env, tool_call)
+        worker_end_s = time.time()
         return SpeculativeToolExecution(
             text=text,
             wall_s=wall,
             real_wall_s=real_wall,
             artificial_sleep_s=artificial_sleep,
             state=spec_env,
+            trace={
+                "snapshot_start_s": snapshot_start_s,
+                "snapshot_end_s": snapshot_end_s,
+                "worker_start_s": worker_start_s,
+                "worker_end_s": worker_end_s,
+            },
         )
 
     def commit_speculative(self, execution: SpeculativeToolExecution) -> None:
+        commit_start_s = time.time()
         if execution.state is not None:
             self.env = execution.state
         self.last_real_wall_s = execution.real_wall_s
         self.last_floor_sleep_s = execution.artificial_sleep_s
+        if execution.trace is not None:
+            execution.trace["commit_start_s"] = commit_start_s
+            execution.trace["commit_end_s"] = time.time()
 
     def _execute_on_env(self, env: Any, tool_call: dict) -> tuple[str, float, float, float]:
         name = tool_call["name"]

@@ -1,0 +1,3 @@
+# Client and official BFCL simulator dependencies; no inference runtime.
+-r requirements.txt
+mpmath>=1.3,<2

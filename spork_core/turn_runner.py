@@ -28,6 +28,7 @@ class TurnConfig:
     probe_max_tokens: int = 160
     seed: int = 42
     main_stop: tuple[str, ...] = ("</tool_call>",)
+    probe_after_tokens: int = 1
 
 
 def _fork_point(turn: int) -> str:
@@ -61,12 +62,37 @@ def _first_structured_tool_call(res: dict) -> dict | None:
     return None
 
 
+def _probe_call_from_chat_choice(
+    choice: dict,
+    model_adapter: ModelAdapter,
+    probe_prefix: str,
+) -> tuple[dict | None, str]:
+    """Extract a forced V4 probe across vLLM chat response variants.
+
+    vLLM 0.24 can classify a continued assistant prefill as ``reasoning`` even
+    when the generated suffix is DSML. Parser-mode deployments may instead
+    return a structured tool call, while older raw deployments return content.
+    """
+    message = choice.get("message") or {}
+    structured = _first_structured_tool_call(message)
+    if structured is not None:
+        return structured, "structured_tool_calls"
+    for field in ("content", "reasoning", "reasoning_content"):
+        generated = message.get(field)
+        if generated:
+            return model_adapter.parse_probe_tool_call(generated, probe_prefix), field
+    return None, "empty"
+
+
 def _append_tool_messages(
     messages: list[dict],
     assistant_text: str,
     tool_result: str,
     *,
     tool_calls_structured: list[dict] | None = None,
+    tool_results: list[str] | None = None,
+    reasoning: str | None = None,
+    reasoning_field: str = "reasoning",
 ) -> None:
     """Append history after a tool call, preserving OpenAI tool_calls when present."""
     if assistant_text:
@@ -74,19 +100,75 @@ def _append_tool_messages(
     if not tool_calls_structured:
         adapters.append_assistant_tool_messages(messages, assistant_text, tool_result)
         return
-    tc = dict(tool_calls_structured[0])
-    fn = dict(tc.get("function") or {})
-    if not tc.get("id"):
-        tc["id"] = "spork-tool-call-0"
-    tc["type"] = tc.get("type") or "function"
-    tc["function"] = fn
-    messages.append({"role": "assistant", "content": assistant_text or "", "tool_calls": [tc]})
-    messages.append({
-        "role": "tool",
-        "tool_call_id": tc["id"],
-        "name": fn.get("name") or "",
-        "content": tool_result,
-    })
+    results = tool_results if tool_results is not None else [tool_result]
+    if len(results) != len(tool_calls_structured):
+        raise ValueError("structured tool calls and results must have equal lengths")
+    normalized_calls = []
+    for index, raw_call in enumerate(tool_calls_structured):
+        tc = dict(raw_call)
+        fn = dict(tc.get("function") or {})
+        raw_args = fn.get("arguments")
+        if isinstance(raw_args, str) and raw_args.strip():
+            try:
+                json.loads(raw_args)
+            except json.JSONDecodeError:
+                # Preserve the exact malformed arguments as transport JSON.
+                fn["arguments"] = json.dumps({"_raw": raw_args}, ensure_ascii=False)
+        if not tc.get("id"):
+            tc["id"] = f"spork-tool-call-{index}"
+        tc["type"] = tc.get("type") or "function"
+        tc["function"] = fn
+        normalized_calls.append((tc, fn, results[index]))
+    assistant_message = {
+        "role": "assistant",
+        "content": assistant_text or "",
+        "tool_calls": [tc for tc, _, _ in normalized_calls],
+    }
+    if reasoning:
+        assistant_message[reasoning_field] = reasoning
+    messages.append(assistant_message)
+    for tc, fn, result in normalized_calls:
+        messages.append({
+            "role": "tool",
+            "tool_call_id": tc["id"],
+            "name": fn.get("name") or "",
+            "content": result,
+        })
+
+
+def _build_chat_probe_message(
+    model_adapter: ModelAdapter,
+    observed_prefix: str,
+    *,
+    enable_thinking: bool,
+) -> tuple[dict, str]:
+    """Build a DeepSeek-V4 assistant prefill for a forced DSML probe.
+
+    In vLLM 0.24 thinking mode, previous chain-of-thought belongs in the
+    assistant ``reasoning`` field. The renderer itself closes ``</think>``
+    before rendering ``content``, so the content prefill must not repeat that
+    closer. The returned prefix is the exact string used to reconstruct the
+    probe continuation for the repository DSML parser.
+    """
+    if hasattr(model_adapter, "build_chat_probe_message"):
+        return model_adapter.build_chat_probe_message(
+            observed_prefix, enable_thinking=enable_thinking,
+        )
+    probe_prefix = model_adapter.build_probe_prefix(enable_thinking)
+    if enable_thinking:
+        think_close = "</think>\n\n"
+        if not probe_prefix.startswith(think_close):
+            raise ValueError("thinking probe prefix must start with </think>")
+        content_prefix = probe_prefix[len(think_close):]
+        return {
+            "role": "assistant",
+            "reasoning": observed_prefix,
+            "content": content_prefix,
+        }, content_prefix
+    return {
+        "role": "assistant",
+        "content": observed_prefix + probe_prefix,
+    }, probe_prefix
 
 
 async def _bounded_chat_max_tokens(
@@ -142,9 +224,8 @@ async def run_baseline_turn(
             session, client, model_adapter, messages,
             cfg.baseline_max_tokens, cfg.context_window_tokens,
         )
-        # V4 chat-API path: render server-side from OpenAI messages; main decode
-        # stops at the DSML tool-call closer. The DSML opener/body streams as plain
-        # content text and is parsed by parse_main_tool_call below.
+        # V4 chat-API path renders server-side; vLLM 0.24 normally consumes
+        # the DSML body and returns structured OpenAI tool-call deltas.
         res = await client.stream_chat(
             session,
             messages,
@@ -152,6 +233,7 @@ async def run_baseline_turn(
             stop=list(model_adapter.main_stop),
             seed=cfg.seed,
             tools=getattr(model_adapter, "tools", None) or None,
+            capture_stream_events=True,
             on_first_token=on_first,
         )
     else:
@@ -165,23 +247,49 @@ async def run_baseline_turn(
         )
     main_end_ms = (time.time() - t0) * 1000.0
     text = res["text"]
-    main_call = _first_structured_tool_call(res) if uses_chat else None
-    if main_call is None:
+    structured_calls = []
+    structured_calls_raw = []
+    if uses_chat:
+        for tc in res.get("tool_calls") or []:
+            call = _normalize_openai_tool_call(tc)
+            if call is not None:
+                structured_calls.append(call)
+                structured_calls_raw.append(tc)
+    if structured_calls:
+        main_calls = structured_calls
+    else:
         main_call = model_adapter.parse_main_tool_call(text)
-    has_tool = main_call is not None
+        main_calls = [main_call] if main_call is not None else []
+    if hasattr(model_adapter, "normalize_call"):
+        main_calls = [model_adapter.normalize_call(call) for call in main_calls]
+    main_call = main_calls[0] if main_calls else None
+    has_tool = bool(main_calls)
     canonical_dispatch_ms = None
     canonical_end_ms = None
     tool_result = ""
+    tool_results = []
     tool_wall_s = 0.0
     if has_tool:
         canonical_dispatch_ms = (time.time() - t0) * 1000.0
-        tool_result, tool_wall_s = await asyncio.to_thread(executor.execute, main_call)
+        if len(main_calls) > 1:
+            if not hasattr(executor, "execute_many"):
+                raise RuntimeError("executor does not support native multi-tool turns")
+            executed = await asyncio.to_thread(executor.execute_many, main_calls)
+            tool_results = [item[0] for item in executed]
+            tool_wall_s = sum(item[1] for item in executed)
+            tool_result = tool_results[0]
+        else:
+            tool_result, tool_wall_s = await asyncio.to_thread(executor.execute, main_call)
+            tool_results = [tool_result]
         canonical_end_ms = (time.time() - t0) * 1000.0
         _append_tool_messages(
             messages,
             text,
             tool_result,
-            tool_calls_structured=res.get("tool_calls") if uses_chat else None,
+            tool_calls_structured=structured_calls_raw if structured_calls else None,
+            tool_results=tool_results if uses_chat else None,
+            reasoning=res.get("reasoning") if uses_chat else None,
+            reasoning_field=getattr(model_adapter, "reasoning_message_field", "reasoning"),
         )
     turn_end_ms = (time.time() - t0) * 1000.0
     entry = {
@@ -202,7 +310,13 @@ async def run_baseline_turn(
         "baseline_has_tool_call": has_tool,
         "baseline_tool_name": main_call["name"] if has_tool else None,
         "baseline_tool_args": main_call.get("arguments") if has_tool else None,
+        "baseline_tool_calls": main_calls,
         "baseline_text": text,
+        "main_usage": res.get("usage"),
+        "main_reasoning": res.get("reasoning", "") if uses_chat else "",
+        "main_structured_tool_call_count": len(res.get("tool_calls") or []) if uses_chat else 0,
+        "main_structured_tool_calls": res.get("tool_calls") if uses_chat else None,
+        "main_stream_events": res.get("stream_events") if uses_chat else None,
         **model_adapter.token_metrics(text),
     }
     if has_tool:
@@ -232,6 +346,9 @@ async def run_spork_turn(
     first_token_s: float | None = None
     first_token_abs: float | None = None
     first_token_text: str | None = None
+    observed_main_parts: list[str] = []
+    observed_main_token_count = 0
+    probe_observed_main_token_count: int | None = None
 
     async def on_first(delay_s: float, text: str) -> None:
         nonlocal first_token_s, first_token_abs, first_token_text
@@ -239,6 +356,11 @@ async def run_spork_turn(
         first_token_abs = time.time()
         first_token_text = text
         first_token_event.set()
+
+    async def on_token(text: str, token_index: int) -> None:
+        nonlocal observed_main_token_count
+        observed_main_parts.append(text)
+        observed_main_token_count = token_index
 
     if uses_chat:
         main_max_tokens = await _bounded_chat_max_tokens(
@@ -253,7 +375,9 @@ async def run_spork_turn(
                 stop=list(model_adapter.main_stop),
                 seed=cfg.seed,
                 tools=getattr(model_adapter, "tools", None) or None,
+                capture_stream_events=True,
                 on_first_token=on_first,
+                on_token=on_token,
             )
         )
     else:
@@ -265,6 +389,7 @@ async def run_spork_turn(
                 stop=list(cfg.main_stop or model_adapter.main_stop),
                 seed=cfg.seed,
                 on_first_token=on_first,
+                on_token=on_token,
             )
         )
 
@@ -279,7 +404,11 @@ async def run_spork_turn(
     spec_end_ms = None
     spec_wall_s = 0.0
     spec_result = ""
+    spec_execution: SpeculativeToolExecution | None = None
+    spec_worker_error: str | None = None
     probe_dispatch_after_first_token_ms = None
+    probe_source = None
+    probe_response = None
 
     try:
         await asyncio.wait_for(first_token_event.wait(), timeout=cfg.first_token_timeout_s)
@@ -287,6 +416,11 @@ async def run_spork_turn(
         first_token_timeout = True
 
     if not first_token_timeout:
+        target_tokens = max(1, cfg.probe_after_tokens)
+        while observed_main_token_count < target_tokens and not main_task.done():
+            await asyncio.sleep(0.005)
+        observed_main_prefix = "".join(observed_main_parts) or (first_token_text or "")
+        probe_observed_main_token_count = observed_main_token_count
         probe_dispatch_abs = time.time()
         probe_dispatch_ms = (probe_dispatch_abs - t0) * 1000.0
         probe_dispatch_after_first_token_ms = (
@@ -296,13 +430,18 @@ async def run_spork_turn(
         )
         if uses_chat:
             # V4 probe: prefill an assistant message ending in the DSML opener and
-            # continue it. cot_so_far is the observed main prefix (first streamed
-            # chunk here, matching the Qwen observed_main_prefix semantics).
-            probe_prefix = model_adapter.build_probe_prefix(cfg.enable_thinking)
-            cot_so_far = first_token_text or ""
-            probe_messages = list(messages) + [
-                {"role": "assistant", "content": cot_so_far + probe_prefix}
-            ]
+            # continue it. cot_so_far is the main prefix observed at the configured
+            # token position, matching the Qwen observed_main_prefix semantics.
+            cot_so_far = observed_main_prefix
+            if hasattr(model_adapter, "build_chat_probe_message"):
+                probe_message, probe_prefix = model_adapter.build_chat_probe_message(
+                    cot_so_far, enable_thinking=cfg.enable_thinking,
+                )
+            else:
+                probe_message, probe_prefix = _build_chat_probe_message(
+                    model_adapter, cot_so_far, enable_thinking=cfg.enable_thinking,
+                )
+            probe_messages = list(messages) + [probe_message]
             probe_max_tokens = await _bounded_chat_max_tokens(
                 session, client, model_adapter, probe_messages,
                 cfg.probe_max_tokens, cfg.context_window_tokens,
@@ -316,6 +455,7 @@ async def run_spork_turn(
                 seed=cfg.seed,
                 logprobs=True,
                 top_logprobs=5,
+                tools=getattr(model_adapter, "tools", None) or None,
                 continue_final_message=True,
                 add_generation_prompt=False,
                 extra=model_adapter.build_probe_constraint_extra()
@@ -323,15 +463,19 @@ async def run_spork_turn(
                 else None,
             )
             probe_end_ms = (time.time() - t0) * 1000.0
-            choice_content = (choice.get("message") or {}).get("content", "") or ""
             flat_lp = chat_logprobs_to_flat(choice)
             probe_logprobs = model_adapter.extract_probe_logprobs(flat_lp)
-            probe_call = model_adapter.parse_probe_tool_call(choice_content, probe_prefix)
+            probe_call, probe_source = _probe_call_from_chat_choice(
+                choice, model_adapter, probe_prefix,
+            )
+            if hasattr(model_adapter, "normalize_call"):
+                probe_call = model_adapter.normalize_call(probe_call)
+            probe_response = choice
         else:
             probe_prompt = model_adapter.build_probe_prompt(
                 messages,
                 enable_thinking=cfg.enable_thinking,
-                observed_main_prefix=first_token_text,
+                observed_main_prefix=observed_main_prefix,
             )
             choice, probe_wall_s = await client.complete(
                 session,
@@ -344,6 +488,10 @@ async def run_spork_turn(
             probe_end_ms = (time.time() - t0) * 1000.0
             probe_logprobs = model_adapter.extract_probe_logprobs(choice.get("logprobs"))
             probe_call = model_adapter.parse_probe_tool_call(choice.get("text", ""))
+            if hasattr(model_adapter, "normalize_call"):
+                probe_call = model_adapter.normalize_call(probe_call)
+            probe_source = "completion_text"
+            probe_response = choice
 
     # For confidence-gated variants, the dispatch decision is known after probe but before
     # main finishes. For args_exact_strict we dispatch optimistically and verify later.
@@ -361,6 +509,8 @@ async def run_spork_turn(
     main_call = _first_structured_tool_call(main_res) if uses_chat else None
     if main_call is None:
         main_call = model_adapter.parse_main_tool_call(text)
+    if hasattr(model_adapter, "normalize_call"):
+        main_call = model_adapter.normalize_call(main_call)
     has_tool = main_call is not None
     decision = gates.decide_gate(
         cfg.gate,
@@ -379,25 +529,21 @@ async def run_spork_turn(
     tool_artificial_sleep_s = 0.0
     if has_tool:
         if decision.accept_after_main and spec_task is not None:
-            spec_execution = await spec_task
-            commit_speculative(executor, spec_execution)
-            tool_result = spec_execution.text
-            spec_wall_s = spec_execution.wall_s
-            tool_real_wall_s = spec_execution.real_wall_s
-            tool_artificial_sleep_s = spec_execution.artificial_sleep_s
-            spec_end_ms = (time.time() - t0) * 1000.0
-            spec_used = True
+            try:
+                spec_execution = await spec_task
+                commit_speculative(executor, spec_execution)
+                tool_result = spec_execution.text
+                spec_wall_s = spec_execution.wall_s
+                tool_real_wall_s = spec_execution.real_wall_s
+                tool_artificial_sleep_s = spec_execution.artificial_sleep_s
+                spec_end_ms = (time.time() - t0) * 1000.0
+                spec_used = True
+            except Exception as exc:  # noqa: BLE001
+                spec_worker_error = f"{type(exc).__name__}: {exc}"
         else:
             if spec_task is not None:
                 spec_wasted = True
-                if spec_task.done():
-                    try:
-                        spec_execution = spec_task.result()
-                        spec_wall_s = spec_execution.wall_s
-                    except Exception:
-                        pass
-                else:
-                    spec_task.cancel()
+        if not spec_used:
             canonical_dispatch_ms = (time.time() - t0) * 1000.0
             tool_result, _ = await asyncio.to_thread(executor.execute, main_call)
             tool_real_wall_s = executor.last_real_wall_s
@@ -408,16 +554,74 @@ async def run_spork_turn(
             text,
             tool_result,
             tool_calls_structured=main_res.get("tool_calls") if uses_chat else None,
+            reasoning=main_res.get("reasoning") if uses_chat else None,
+            reasoning_field=getattr(model_adapter, "reasoning_message_field", "reasoning"),
         )
 
-    if spec_used and spec_dispatch_ms is not None and spec_wall_s > 0:
-        real_overlap_ms = min(spec_wall_s * 1000.0, max(0.0, main_end_ms - spec_dispatch_ms))
-        spec_actual_end_ms = spec_dispatch_ms + spec_wall_s * 1000.0
+    observed_turn_end_ms = (time.time() - t0) * 1000.0
+    reconcile_ready_ms = main_end_ms
+    if spec_task is not None and not spec_used:
+        spec_wasted = True
+    cleanup_start = time.time()
+    if spec_task is not None and spec_execution is None:
+        try:
+            spec_execution = await spec_task
+            spec_wall_s = spec_execution.wall_s
+        except Exception as exc:  # noqa: BLE001
+            spec_worker_error = f"{type(exc).__name__}: {exc}"
+    cleanup_wait_ms = (time.time() - cleanup_start) * 1000.0
+
+    spec_trace = None
+    if spec_task is not None:
+        raw_trace = spec_execution.trace if spec_execution is not None else None
+        def relative_ms(key: str) -> float | None:
+            value = (raw_trace or {}).get(key)
+            return round((value - t0) * 1000.0, 3) if value is not None else None
+
+        worker_start_ms = relative_ms("worker_start_s")
+        worker_end_ms = relative_ms("worker_end_s")
+        if spec_used and worker_start_ms is not None and worker_end_ms is not None:
+            worker_duration_ms = max(0.0, worker_end_ms - worker_start_ms)
+            real_overlap_ms = min(
+                worker_duration_ms,
+                max(0.0, reconcile_ready_ms - worker_start_ms),
+            )
+        else:
+            real_overlap_ms = 0.0
+        spec_actual_end_ms = worker_end_ms
+        spec_trace = {
+            "launched": True,
+            "committed": spec_used,
+            "wasted": spec_wasted,
+            "exact_match": decision.args_exact,
+            "predicted_call": probe_call,
+            "snapshot_start_ms": relative_ms("snapshot_start_s"),
+            "snapshot_end_ms": relative_ms("snapshot_end_s"),
+            "worker_start_ms": worker_start_ms,
+            "worker_end_ms": worker_end_ms,
+            "commit_start_ms": relative_ms("commit_start_s"),
+            "commit_end_ms": relative_ms("commit_end_s"),
+            "tool_wall_s": round(spec_wall_s, 3) if spec_execution is not None else None,
+            "real_tool_wall_s": (
+                round(spec_execution.real_wall_s, 3) if spec_execution is not None else None
+            ),
+            "floor_sleep_s": (
+                round(spec_execution.artificial_sleep_s, 3)
+                if spec_execution is not None else None
+            ),
+            "worker_error": spec_worker_error,
+        }
     else:
         real_overlap_ms = 0.0
         spec_actual_end_ms = None
 
-    turn_end_ms = (time.time() - t0) * 1000.0
+    turn_end_ms = observed_turn_end_ms
+    if spec_used:
+        tool_result_ready_ms = max(reconcile_ready_ms, spec_actual_end_ms or reconcile_ready_ms)
+    elif has_tool:
+        tool_result_ready_ms = canonical_end_ms
+    else:
+        tool_result_ready_ms = None
     entry = {
         "turn": turn,
         "fork_point": _fork_point(turn),
@@ -431,8 +635,16 @@ async def run_spork_turn(
             else None
         ),
         "main_end_ms": main_end_ms,
+        "main_dispatch_ms": 0.0,
+        "main_tool_call_ready_ms": main_end_ms,
+        "reconcile_ready_ms": reconcile_ready_ms,
         "probe_dispatch_ms": probe_dispatch_ms,
         "probe_dispatch_after_first_token_ms": probe_dispatch_after_first_token_ms,
+        "probe_after_tokens": max(1, cfg.probe_after_tokens),
+        "probe_observed_main_token_count": probe_observed_main_token_count,
+        "probe_observed_main_prefix": (
+            observed_main_prefix if not first_token_timeout else None
+        ),
         "probe_end_ms": probe_end_ms,
         "probe_wall_s": round(probe_wall_s, 3),
         "spec_tool_dispatch_ms": spec_dispatch_ms,
@@ -450,10 +662,20 @@ async def run_spork_turn(
         "baseline_tool_name": main_call["name"] if has_tool else None,
         "baseline_tool_args": main_call.get("arguments") if has_tool else None,
         "baseline_text": text,
+        "main_usage": main_res.get("usage"),
+        "probe_usage": (probe_response or {}).get("usage"),
+        "main_reasoning": main_res.get("reasoning", "") if uses_chat else "",
+        "main_structured_tool_call_count": (
+            len(main_res.get("tool_calls") or []) if uses_chat else 0
+        ),
+        "main_structured_tool_calls": main_res.get("tool_calls") if uses_chat else None,
+        "main_stream_events": main_res.get("stream_events") if uses_chat else None,
         **model_adapter.token_metrics(text),
         "probe_tool_name": probe_call["name"] if probe_call else None,
         "probe_tool_args": probe_call.get("arguments") if probe_call else None,
         "probe_parse_ok": probe_call is not None,
+        "probe_response_source": probe_source,
+        "probe_response": probe_response,
         "probe_logprobs": probe_logprobs,
         "probe_first_token_top1_prob": model_adapter.first_token_top1_prob(probe_logprobs),
         "probe_span_min_prob_skip0": decision.confidence,
@@ -464,6 +686,19 @@ async def run_spork_turn(
         "spec_dispatched": spec_task is not None,
         "spec_used": spec_used,
         "spec_wasted": spec_wasted,
+        "spec_cleanup_wait_ms_excluded_from_e2e": round(cleanup_wait_ms, 3),
+        "probe_trace": ([{
+            "probe_id": 1,
+            "dispatch_ms": probe_dispatch_ms,
+            "completion_ms": probe_end_ms,
+            "parsed_call": probe_call,
+            "response_source": probe_source,
+        }] if probe_dispatch_ms is not None else []),
+        "speculative_tool": spec_trace,
+        "critical_path_hidden_ms": round(real_overlap_ms, 3),
+        "tool_result_ready_ms": (
+            round(tool_result_ready_ms, 3) if tool_result_ready_ms is not None else None
+        ),
     }
     if has_tool:
         entry["tool_result_len"] = len(tool_result)
@@ -660,6 +895,9 @@ async def run_spork_cross_turn(
         "baseline_tool_name": main_call["name"] if has_tool else None,
         "baseline_tool_args": main_call.get("arguments") if has_tool else None,
         "baseline_text": text,
+        "main_usage": main_res.get("usage"),
+        "probe_usage": (probe_response or {}).get("usage"),
+        "main_reasoning": main_res.get("reasoning", "") if uses_chat else "",
         **model_adapter.token_metrics(text),
         "probe_tool_name": probe_call["name"] if probe_call else None,
         "probe_tool_args": probe_call.get("arguments") if probe_call else None,
@@ -1040,7 +1278,6 @@ async def run_spork_adaptive_replay_turn(
 
 @dataclass
 class RetryTurnConfig:
-    """Config for D2 multi-probe retry."""
     max_retries: int = 5
     confidence_threshold: float = 0.90
     retry_token_step: int = 50
@@ -1053,20 +1290,39 @@ class RetryTurnConfig:
     first_token_timeout_s: float = 10.0
     seed: int = 42
     main_stop: tuple[str, ...] = ("</tool_call>",)
-    # Extended strategy knobs
     theta_decay_per_retry: float = 0.0
     min_tokens_first_probe: int = 0
     hybrid_name_loose_first: bool = False
     hybrid_name_threshold: float = 0.60
     continue_after_dispatch: bool = False
-    # D3-in-HTTP (Phase 5, 2026-06-14): optional async hooks that inject probe
-    # draft tokens into the SPORK sidecar so the main decode accepts them at the
-    # <tool_call> boundary. d3_set(probe_call_dict, prompt_len) registers draft
-    # tokens; d3_clear() resets sidecar state after the turn. None = D3 disabled
-    # (pure d1_d2). These do NOT affect acceptance metrics (gate_match/hit_name);
-    # they only accelerate the main decode wall-clock.
     d3_set: Any = None
     d3_clear: Any = None
+    retain_candidate_pool: bool = False
+    dispatch_all_parsed: bool = False
+    probe_token_targets: tuple[int, ...] = ()
+
+
+def _portfolio_calls_exact(candidate: dict | None, main_call: dict | None) -> bool:
+    return bool(
+        candidate
+        and main_call
+        and candidate.get("name") == main_call.get("name")
+        and tool_calls.args_exact_match(
+            candidate.get("arguments"), main_call.get("arguments")
+        )
+    )
+
+
+def _select_portfolio_candidate(
+    candidates: list[dict[str, Any]], main_call: dict | None
+) -> dict[str, Any] | None:
+    """Select the earliest-dispatched strict-exact portfolio candidate."""
+    matches = [
+        candidate
+        for candidate in candidates
+        if _portfolio_calls_exact(candidate.get("call"), main_call)
+    ]
+    return min(matches, key=lambda candidate: candidate["dispatch_ms"]) if matches else None
 
 
 def _resolve_retry_main_stop(model_adapter: ModelAdapter, cfg: RetryTurnConfig) -> list[str]:
@@ -1077,6 +1333,13 @@ def _resolve_retry_main_stop(model_adapter: ModelAdapter, cfg: RetryTurnConfig) 
     not a fallback for V4.
     """
     return list(model_adapter.main_stop)
+
+
+async def _capture_decode_completion(coro, completion: dict, started_at: float):
+    """Stamp the stream's return inside its task, before any probe join."""
+    result = await coro
+    completion["end_ms"] = (time.time() - started_at) * 1000.0
+    return result
 
 
 async def run_spork_retry_turn(
@@ -1102,6 +1365,7 @@ async def run_spork_retry_turn(
         main_prompt = model_adapter.render_main_prompt(messages, enable_thinking=cfg.enable_thinking)
     main_max_tokens = cfg.baseline_max_tokens
     t0 = time.time()
+    main_completion: dict[str, float] = {}
 
     # Streaming state: accumulate main's decoded text via on_token callback
     main_text_lock = threading.Lock()
@@ -1114,9 +1378,6 @@ async def run_spork_retry_turn(
         nonlocal first_token_s, first_token_abs
         first_token_s = delay_s
         first_token_abs = time.time()
-        with main_text_lock:
-            main_accumulated["text"] += text
-            main_accumulated["token_count"] += 1
         first_token_event.set()
 
     async def on_token(delta_text: str, token_idx: int) -> None:
@@ -1132,7 +1393,7 @@ async def run_spork_retry_turn(
         # V4 chat-API main decode: render server-side from messages, stop at the
         # DSML closer; DSML body streams as content text (parsed below). on_token
         # cadence drives the multi-probe retry schedule exactly as in the Qwen path.
-        main_task = asyncio.create_task(
+        main_task = asyncio.create_task(_capture_decode_completion(
             client.stream_chat(
                 session,
                 messages,
@@ -1142,10 +1403,10 @@ async def run_spork_retry_turn(
                 tools=getattr(model_adapter, "tools", None) or None,
                 on_first_token=on_first,
                 on_token=on_token,
-            )
-        )
+            ), main_completion, t0
+        ))
     else:
-        main_task = asyncio.create_task(
+        main_task = asyncio.create_task(_capture_decode_completion(
             client.stream(
                 session,
                 main_prompt,
@@ -1154,8 +1415,8 @@ async def run_spork_retry_turn(
                 seed=cfg.seed,
                 on_first_token=on_first,
                 on_token=on_token,
-            )
-        )
+            ), main_completion, t0
+        ))
 
     # Retry loop state
     probes: list[dict] = []
@@ -1166,6 +1427,8 @@ async def run_spork_retry_turn(
     superseded_specs = 0
     first_token_timeout = False
     d3_set_count = 0
+    portfolio_candidates: list[dict[str, Any]] = []
+    selected_portfolio_candidate: dict[str, Any] | None = None
 
     try:
         await asyncio.wait_for(first_token_event.wait(), timeout=cfg.first_token_timeout_s)
@@ -1198,7 +1461,11 @@ async def run_spork_retry_turn(
             # Retry 0: fire after first token (or after min_tokens_first_probe)
             # Retry N>0: wait for (last_probe_tokens + step) tokens AND sentence boundary
             if retry_idx > 0:
-                target_tokens = last_probe_tokens + cfg.retry_token_step
+                target_tokens = (
+                    cfg.probe_token_targets[retry_idx]
+                    if retry_idx < len(cfg.probe_token_targets)
+                    else last_probe_tokens + cfg.retry_token_step
+                )
                 deadline = time.time() + 10.0
                 reached_target = False
                 while time.time() < deadline:
@@ -1208,7 +1475,11 @@ async def run_spork_retry_turn(
                         current_tokens = main_accumulated["token_count"]
                         current_text = main_accumulated["text"]
                     if current_tokens >= target_tokens:
-                        if not cfg.snap_to_sentence or _at_sentence_boundary(current_text):
+                        if (
+                            cfg.probe_token_targets
+                            or not cfg.snap_to_sentence
+                            or _at_sentence_boundary(current_text)
+                        ):
                             reached_target = True
                             break
                         if current_tokens >= target_tokens + 30:
@@ -1233,14 +1504,17 @@ async def run_spork_retry_turn(
             probe_logprobs = {}
             probe_call = None
             probe_wall_s = 0.0
+            probe_response = None
             try:
                 if uses_chat:
                     # V4 probe: prefill assistant message ending in the DSML opener,
                     # continuing the observed CoT (observed_prefix == cot_so_far).
-                    probe_prefix = model_adapter.build_probe_prefix(cfg.enable_thinking)
-                    probe_messages = list(messages) + [
-                        {"role": "assistant", "content": observed_prefix + probe_prefix}
-                    ]
+                    probe_message, probe_prefix = _build_chat_probe_message(
+                        model_adapter,
+                        observed_prefix,
+                        enable_thinking=cfg.enable_thinking,
+                    )
+                    probe_messages = list(messages) + [probe_message]
                     probe_max_tokens = await _bounded_chat_max_tokens(
                         session, client, model_adapter, probe_messages,
                         cfg.probe_max_tokens, cfg.context_window_tokens,
@@ -1254,6 +1528,7 @@ async def run_spork_retry_turn(
                         seed=cfg.seed,
                         logprobs=True,
                         top_logprobs=5,
+                        tools=getattr(model_adapter, "tools", None) or None,
                         continue_final_message=True,
                         add_generation_prompt=False,
                         extra=model_adapter.build_probe_constraint_extra()
@@ -1266,10 +1541,12 @@ async def run_spork_retry_turn(
                         )
                     else:
                         choice, probe_wall_s = await probe_coro
-                    choice_content = (choice.get("message") or {}).get("content", "") or ""
+                    probe_response = choice
                     flat_lp = chat_logprobs_to_flat(choice)
                     probe_logprobs = model_adapter.extract_probe_logprobs(flat_lp)
-                    probe_call = model_adapter.parse_probe_tool_call(choice_content, probe_prefix)
+                    probe_call, probe_source = _probe_call_from_chat_choice(
+                        choice, model_adapter, probe_prefix,
+                    )
                 else:
                     probe_prompt = model_adapter.build_probe_prompt(
                         messages,
@@ -1290,8 +1567,11 @@ async def run_spork_retry_turn(
                         )
                     else:
                         choice, probe_wall_s = await probe_coro
+                    probe_response = choice
                     probe_logprobs = model_adapter.extract_probe_logprobs(choice.get("logprobs"))
                     probe_call = model_adapter.parse_probe_tool_call(choice.get("text", ""))
+                if hasattr(model_adapter, "normalize_call"):
+                    probe_call = model_adapter.normalize_call(probe_call)
             except asyncio.TimeoutError:
                 probe_wall_s = time.time() - probe_dispatch_abs
                 probe_error = f"timeout_after_{cfg.probe_timeout_s:.1f}s"
@@ -1319,6 +1599,9 @@ async def run_spork_retry_turn(
                 "probe_parse_ok": probe_call is not None,
                 "probe_logprobs": probe_logprobs,
                 "probe_error": probe_error,
+                "probe_response_source": probe_source if uses_chat and not probe_error else None,
+                "probe_response": probe_response,
+                "usage": (probe_response or {}).get("usage"),
                 "dispatched": False,
             }
             probes.append(probe_entry)
@@ -1340,6 +1623,49 @@ async def run_spork_retry_turn(
                     probe_entry["d3_set_error"] = str(_e)
 
             # Dispatch decision
+            if cfg.retain_candidate_pool:
+                should_dispatch = bool(
+                    probe_call
+                    and (
+                        cfg.dispatch_all_parsed
+                        or (
+                            confidence is not None
+                            and confidence >= effective_theta
+                        )
+                    )
+                )
+                if should_dispatch:
+                    duplicate = next(
+                        (
+                            candidate
+                            for candidate in portfolio_candidates
+                            if _portfolio_calls_exact(candidate["call"], probe_call)
+                        ),
+                        None,
+                    )
+                    if duplicate is not None:
+                        probe_entry["candidate_id"] = duplicate["candidate_id"]
+                        probe_entry["duplicate_candidate"] = True
+                    else:
+                        candidate_dispatch_ms = (time.time() - t0) * 1000.0
+                        candidate = {
+                            "candidate_id": len(portfolio_candidates),
+                            "retry_idx": retry_idx,
+                            "call": probe_call,
+                            "dispatch_ms": candidate_dispatch_ms,
+                            "task": asyncio.create_task(
+                                asyncio.to_thread(
+                                    execute_speculative, executor, probe_call
+                                )
+                            ),
+                            "execution": None,
+                            "worker_error": None,
+                        }
+                        portfolio_candidates.append(candidate)
+                        probe_entry["candidate_id"] = candidate["candidate_id"]
+                        probe_entry["dispatched"] = True
+                continue
+
             if probe_call and confidence is not None and confidence >= effective_theta:
                 # Hybrid mode: first probe dispatches on name-only (loose) at lower theta
                 if cfg.hybrid_name_loose_first and retry_idx == 0:
@@ -1410,9 +1736,11 @@ async def run_spork_retry_turn(
                     probe_entry["dispatched"] = True
                     break
 
-    # Wait for main to finish
+    # main_end_ms remains the reconciliation barrier for the fixed-trace
+    # counterfactual. The stream completion timestamp excludes probe-join wait.
     main_res = await main_task
     main_end_ms = (time.time() - t0) * 1000.0
+    main_decode_complete_ms = main_completion["end_ms"]
     text = main_res["text"]
     # D3-in-HTTP: clear sidecar draft-token state so the NEXT request/turn starts
     # clean (state hygiene — verified E2). Safe no-op if D3 disabled.
@@ -1422,7 +1750,11 @@ async def run_spork_retry_turn(
             d3_status = await cfg.d3_clear()
         except Exception:
             d3_status = None
-    main_call = model_adapter.parse_main_tool_call(text)
+    main_call = _first_structured_tool_call(main_res) if uses_chat else None
+    if main_call is None:
+        main_call = model_adapter.parse_main_tool_call(text)
+    if hasattr(model_adapter, "normalize_call"):
+        main_call = model_adapter.normalize_call(main_call)
     has_tool = main_call is not None
 
     # Strict gate: name + args_exact required
@@ -1435,7 +1767,51 @@ async def run_spork_retry_turn(
     tool_real_wall_s = 0.0
     real_overlap_ms = 0.0
 
-    if has_tool and spec_task is not None and committed_probe_call is not None:
+    if has_tool and cfg.retain_candidate_pool:
+        selected_portfolio_candidate = _select_portfolio_candidate(
+            portfolio_candidates, main_call
+        )
+        if selected_portfolio_candidate is not None:
+            spec_task = selected_portfolio_candidate["task"]
+            spec_dispatch_ms = selected_portfolio_candidate["dispatch_ms"]
+            committed_probe_call = selected_portfolio_candidate["call"]
+            committed_retry_idx = selected_portfolio_candidate["retry_idx"]
+            gate_match = True
+            try:
+                spec_execution = await spec_task
+                selected_portfolio_candidate["execution"] = spec_execution
+                commit_speculative(executor, spec_execution)
+                tool_result = spec_execution.text
+                spec_wall_s = spec_execution.wall_s
+                tool_real_wall_s = spec_execution.real_wall_s
+                spec_end_ms = (time.time() - t0) * 1000.0
+                spec_used = True
+                raw_trace = spec_execution.trace or {}
+                worker_start_s = raw_trace.get("worker_start_s")
+                worker_end_s = raw_trace.get("worker_end_s")
+                if worker_start_s is not None and worker_end_s is not None:
+                    worker_start_ms = (worker_start_s - t0) * 1000.0
+                    worker_duration_ms = max(
+                        0.0, (worker_end_s - worker_start_s) * 1000.0
+                    )
+                    real_overlap_ms = min(
+                        worker_duration_ms,
+                        max(0.0, main_end_ms - worker_start_ms),
+                    )
+            except Exception as exc:  # noqa: BLE001
+                selected_portfolio_candidate["worker_error"] = (
+                    f"{type(exc).__name__}: {exc}"
+                )
+        spec_wasted = any(
+            candidate is not selected_portfolio_candidate
+            for candidate in portfolio_candidates
+        )
+    elif cfg.retain_candidate_pool:
+        # A probe can false-positive on a final-answer turn. Its isolated work is
+        # discarded just like any non-selected candidate and must be accounted as
+        # wasted, while the canonical world remains untouched.
+        spec_wasted = bool(portfolio_candidates)
+    elif has_tool and spec_task is not None and committed_probe_call is not None:
         name_match = committed_probe_call.get("name") == main_call.get("name")
         args_match = tool_calls.args_exact_match(
             committed_probe_call.get("arguments"), main_call.get("arguments")
@@ -1477,45 +1853,143 @@ async def run_spork_retry_turn(
             text,
             tool_result,
             tool_calls_structured=main_res.get("tool_calls") if uses_chat else None,
+            reasoning=main_res.get("reasoning") if uses_chat else None,
+            reasoning_field=getattr(model_adapter, "reasoning_message_field", "reasoning"),
         )
+
+    if cfg.retain_candidate_pool:
+        for candidate in portfolio_candidates:
+            if candidate is selected_portfolio_candidate:
+                continue
+            task = candidate["task"]
+            if task.done():
+                try:
+                    candidate["execution"] = task.result()
+                except Exception as exc:  # noqa: BLE001
+                    candidate["worker_error"] = f"{type(exc).__name__}: {exc}"
+            else:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
     turn_end_ms = (time.time() - t0) * 1000.0
 
-    # Compute accuracy metrics against main's call
-    hit_name = bool(committed_probe_call and main_call and committed_probe_call.get("name") == main_call.get("name"))
-    hit_args_exact = bool(hit_name and tool_calls.args_exact_match(
-        committed_probe_call.get("arguments") if committed_probe_call else None,
-        main_call.get("arguments") if main_call else None,
-    ))
+    representative_probe = None
+    if probes:
+        if selected_portfolio_candidate is not None:
+            representative_probe = next(
+                (
+                    probe
+                    for probe in probes
+                    if probe.get("retry_idx")
+                    == selected_portfolio_candidate["retry_idx"]
+                ),
+                probes[-1],
+            )
+        else:
+            representative_probe = probes[-1]
+    representative_call = (
+        {
+            "name": representative_probe.get("probe_tool_name"),
+            "arguments": representative_probe.get("probe_tool_args"),
+        }
+        if representative_probe and representative_probe.get("probe_parse_ok")
+        else committed_probe_call
+    )
+    representative_logprobs = (
+        representative_probe.get("probe_logprobs") or {}
+        if representative_probe
+        else {}
+    )
+
+    # Compute strict portfolio accuracy against the main call. Name-only hits are
+    # diagnostic; they never authorize a state commit.
+    if cfg.retain_candidate_pool:
+        hit_name = bool(
+            main_call
+            and any(
+                candidate["call"].get("name") == main_call.get("name")
+                for candidate in portfolio_candidates
+            )
+        )
+        hit_args_exact = selected_portfolio_candidate is not None
+    else:
+        hit_name = bool(committed_probe_call and main_call and committed_probe_call.get("name") == main_call.get("name"))
+        hit_args_exact = bool(hit_name and tool_calls.args_exact_match(
+            committed_probe_call.get("arguments") if committed_probe_call else None,
+            main_call.get("arguments") if main_call else None,
+        ))
+    representative_decision = gates.decide_gate(
+        "args_exact_strict",
+        representative_call,
+        main_call,
+        representative_logprobs,
+        confidence_threshold=cfg.confidence_threshold,
+    )
+    portfolio_trace = [
+        {
+            "candidate_id": candidate["candidate_id"],
+            "retry_idx": candidate["retry_idx"],
+            "call": candidate["call"],
+            "dispatch_ms": round(candidate["dispatch_ms"], 3),
+            "selected": candidate is selected_portfolio_candidate,
+            "exact_match": _portfolio_calls_exact(candidate["call"], main_call),
+            "worker_error": candidate.get("worker_error"),
+            "execution_trace": (
+                candidate["execution"].trace if candidate.get("execution") is not None else None
+            ),
+        }
+        for candidate in portfolio_candidates
+    ]
 
     entry = {
         "turn": turn,
         "fork_point": _fork_point(turn),
-        "mode": "spork_retry",
+        "mode": "spork_portfolio" if cfg.retain_candidate_pool else "spork_retry",
+        "turn_started_at_s": t0,
         "gate_variant": "args_exact_strict",
         "max_retries": cfg.max_retries,
         "confidence_threshold": cfg.confidence_threshold,
         "continue_after_dispatch": cfg.continue_after_dispatch,
+        "retain_candidate_pool": cfg.retain_candidate_pool,
+        "probe_token_targets": list(cfg.probe_token_targets),
         "main_max_tokens": main_max_tokens,
         "main_first_token_ms": (first_token_s * 1000.0) if first_token_s is not None else None,
         "main_end_ms": main_end_ms,
+        "main_decode_complete_ms": main_decode_complete_ms,
+        "reconciliation_ready_ms": main_end_ms,
+        "probe_join_wait_ms": max(0.0, main_end_ms - main_decode_complete_ms),
+        "counterfactual_tool_serialization_boundary": "reconciliation_ready_after_probe_join",
         "turn_end_ms": turn_end_ms,
         "first_token_timeout": first_token_timeout,
         "baseline_has_tool_call": has_tool,
         "baseline_tool_name": main_call["name"] if has_tool else None,
         "baseline_tool_args": main_call.get("arguments") if has_tool else None,
         "baseline_text": text,
+        "main_usage": main_res.get("usage"),
+        "main_reasoning": main_res.get("reasoning", "") if uses_chat else "",
+        "main_structured_tool_call_count": len(main_res.get("tool_calls") or []) if uses_chat else 0,
+        "main_structured_tool_calls": main_res.get("tool_calls") if uses_chat else None,
         **model_adapter.token_metrics(text),
         # Probe/retry info
         "num_probes": len(probes),
         "committed_retry_idx": committed_retry_idx,
         "committed_probe_name": committed_probe_call["name"] if committed_probe_call else None,
         "committed_probe_args": committed_probe_call.get("arguments") if committed_probe_call else None,
+        "selected_candidate_id": (
+            selected_portfolio_candidate["candidate_id"]
+            if selected_portfolio_candidate is not None
+            else None
+        ),
+        "portfolio_distinct_candidates": len(portfolio_candidates),
+        "portfolio_candidates": portfolio_trace,
         # Gate decision
         "hit_name": hit_name,
         "hit_args_exact": hit_args_exact,
         "gate_match": gate_match,
-        "spec_dispatched": spec_task is not None,
+        "spec_dispatched": bool(portfolio_candidates) if cfg.retain_candidate_pool else spec_task is not None,
         "spec_used": spec_used,
         "spec_wasted": spec_wasted,
         "superseded_specs": superseded_specs,
@@ -1530,6 +2004,27 @@ async def run_spork_retry_turn(
         "canonical_tool_end_ms": canonical_end_ms,
         "real_tool_wall_s": round(tool_real_wall_s, 3),
         "real_overlap_ms": round(real_overlap_ms, 3),
+        "critical_path_hidden_ms": round(real_overlap_ms, 3),
+        "probe_parse_ok": any(probe.get("probe_parse_ok") for probe in probes),
+        "probe_tool_name": representative_call.get("name") if representative_call else None,
+        "probe_tool_args": representative_call.get("arguments") if representative_call else None,
+        "probe_response_source": (
+            representative_probe.get("probe_response_source")
+            if representative_probe
+            else None
+        ),
+        "probe_response": (
+            representative_probe.get("probe_response")
+            if representative_probe
+            else None
+        ),
+        "probe_usage": representative_probe.get("usage") if representative_probe else None,
+        "probe_logprobs": representative_logprobs,
+        "probe_first_token_top1_prob": model_adapter.first_token_top1_prob(
+            representative_logprobs
+        ),
+        "probe_span_min_prob_skip0": representative_decision.confidence,
+        "args_partial_overlap": round(representative_decision.args_partial, 3),
         # Per-probe detail
         "probes": probes,
     }

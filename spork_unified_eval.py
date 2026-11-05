@@ -50,6 +50,7 @@ from spork_core.executors import (
 from spork_core.qwen import QwenToolCallAdapter, Qwen35ToolCallAdapter
 from spork_core.turn_runner import TurnConfig, RetryTurnConfig, run_baseline_turn, run_spork_turn, run_spork_retry_turn, run_spork_cross_turn
 from spork_core.vllm_client import VllmClient
+from spork_core.model_setup import MODEL_FAMILIES, make_adapter, configure_client, probe_targets
 from tool_backends import WebSearchBackend, WebBrowseBackend, WikipediaSearchBackend
 
 paths.add_runtime_paths()
@@ -547,9 +548,12 @@ async def run_task(
     for turn_idx in range(1, max_turns + 1):
         if config == "baseline":
             entry = await run_baseline_turn(session, client, adapter, messages, executor, turn_idx, cfg)
-        elif config in ("spork_d2", "d1_d2", "d1_d2_d3"):
+        elif config in ("spork_d2", "d1_d2", "d1_d2_d3", "portfolio"):
+            targets = getattr(args, "probe_token_targets", ())
+            if config == "portfolio" and not targets:
+                targets = (1, 16)
             retry_cfg = RetryTurnConfig(
-                max_retries=args.d2_max_retries,
+                max_retries=len(targets) if targets else args.d2_max_retries,
                 confidence_threshold=args.d2_confidence_threshold,
                 retry_token_step=args.d2_retry_token_step,
                 snap_to_sentence=args.d2_snap_to_sentence,
@@ -562,8 +566,11 @@ async def run_task(
                 seed=cfg.seed,
                 main_stop=cfg.main_stop,
                 theta_decay_per_retry=args.d2_theta_decay_per_retry,
-                min_tokens_first_probe=args.d2_min_tokens_first_probe,
+                min_tokens_first_probe=targets[0] if targets else args.d2_min_tokens_first_probe,
                 continue_after_dispatch=args.d2_continue_after_dispatch,
+                retain_candidate_pool=config == "portfolio" or getattr(args, "candidate_pool", False),
+                dispatch_all_parsed=config == "portfolio" or getattr(args, "dispatch_all_parsed", False),
+                probe_token_targets=targets,
             )
             # D3-in-HTTP: wire sidecar token-injection hooks for d1_d2_d3.
             # Acceptance metrics (gate_match/hit_name) are computed identically to
@@ -622,17 +629,7 @@ async def run_benchmark(args):
         model=args.model_name,
         timeout_s=600,
     )
-    if "3.5" in args.model_name or "qwen3.5" in args.model_name.lower():
-        client.main_stop_token_ids = (248058,)
-    elif "a3b" in args.model_name.lower() and "35" in args.model_name.lower():
-        # Qwen3.5-35B-A3B emits JSON tool calls (uses the JSON adapter, since "3.5"
-        # is not a substring of "qwen35-a3b"), but its <tool_call> token id is 248058,
-        # not Qwen3's 151657. Set it explicitly so main decode stops at the tool-call
-        # boundary, matching the Qwen3-8B/4B methodology.
-        client.main_stop_token_ids = (248058,)
-    elif "phi" in args.model_name.lower():
-        # Phi-4 has no special <tool_call> token (vocab_size=100352) — rely on string stop only
-        client.main_stop_token_ids = ()
+    configure_client(client, args.model_family, enable_thinking=args.enable_thinking)
     log(f"Waiting for vLLM at {args.model_url}...")
     await client.wait_ready(deadline_s=60)
     log("vLLM ready.")
@@ -702,6 +699,7 @@ async def run_benchmark(args):
         baseline_max_tokens=main_completion_max_tokens,
         context_window_tokens=args.max_tokens,
         seed=args.seed,
+        probe_after_tokens=args.probe_after_tokens,
     )
 
     all_results = {}
@@ -715,8 +713,8 @@ async def run_benchmark(args):
             log(f"  [{task_idx+1}/{len(tasks)}] {config_key} :: {str(task_id)[:50]}")
 
             # Build messages + executor per benchmark
-            use_qwen35_adapter = "3.5" in args.model_name or "qwen3.5" in args.model_name.lower()
-            adapter_cls = Qwen35ToolCallAdapter if use_qwen35_adapter else QwenToolCallAdapter
+            def adapter_cls(tokenizer, tools):
+                return make_adapter(args.model_family, tokenizer, tools, args.model_name)
             if args.benchmark == "tau2":
                 from spork_core.benchmarks.tau2 import load_system_prompt, load_tools, get_environment
                 domain = task["domain"]
@@ -838,6 +836,11 @@ async def run_benchmark(args):
             "task_timeout_s": args.task_timeout_s,
             "warmup_requests": args.warmup_requests,
             "warmup_max_tokens": args.warmup_max_tokens,
+            "model_family": args.model_family,
+            "probe_after_tokens": args.probe_after_tokens,
+            "probe_token_targets": list(args.probe_token_targets),
+            "candidate_pool": args.candidate_pool,
+            "dispatch_all_parsed": args.dispatch_all_parsed,
         },
         "server": {
             "model_url": args.model_url,
@@ -891,10 +894,20 @@ async def run_benchmark(args):
     return summary
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description="Unified SPORK multi-benchmark eval")
     parser.add_argument("--model-url", default="http://localhost:8001/v1")
     parser.add_argument("--model-name", default="qwen3-4b")
+    parser.add_argument("--model-family", choices=MODEL_FAMILIES, default="auto",
+                        help="auto preserves the original Qwen adapter selection")
+    parser.add_argument("--probe-after-tokens", type=int, default=1,
+                        help="D1 fork depth in output-stream deltas, not exact tokenizer tokens")
+    parser.add_argument("--probe-token-targets", type=probe_targets, default=(),
+                        help="D2 output-stream depths, e.g. 1,16")
+    parser.add_argument("--candidate-pool", action="store_true",
+                        help="Retain D2 candidates and select the earliest strict match")
+    parser.add_argument("--dispatch-all-parsed", action="store_true",
+                        help="Dispatch all parsed pool candidates without confidence filtering")
     parser.add_argument("--probe-model-url", default=None,
                         help="Optional separate vLLM endpoint for the cross-model probe (spork_cross config)")
     parser.add_argument("--probe-model-name", default="qwen3-4b",
@@ -983,7 +996,31 @@ def main():
                         help="In replay mode, fall back to the real executor on cache miss.")
     parser.add_argument("--tool-cache-per-config", action="store_true",
                         help="Write/read separate cache files per config instead of sharing one cache.")
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
+    configs = {part.strip() for part in args.configs.split(',')}
+    if configs - {'baseline', 'd1', 'spork', 'd1_d2', 'spork_d2', 'd1_d2_d3', 'spork_cross', 'portfolio'}:
+        parser.error('unknown config in --configs')
+    if args.probe_after_tokens < 1:
+        parser.error('--probe-after-tokens must be positive')
+    if args.dispatch_all_parsed and not (args.candidate_pool or 'portfolio' in configs):
+        parser.error('--dispatch-all-parsed requires --candidate-pool or --configs portfolio')
+    if (args.candidate_pool or args.probe_token_targets) and not configs.intersection(
+            {'d1_d2', 'spork_d2', 'd1_d2_d3', 'portfolio'}):
+        parser.error('candidate pool/depth targets require a retry config or portfolio')
+    if 'd1_d2_d3' in configs and (args.candidate_pool or args.dispatch_all_parsed):
+        parser.error('candidate pools are not wired to the legacy D3 sidecar; use portfolio on a plain server')
+    if args.model_family in ('deepseek_v4', 'glm53') and (
+            'd1_d2_d3' in configs or 'spork_cross' in configs or args.probe_model_url):
+        parser.error('legacy D3/cross-model entrypoints support Qwen only')
+    if args.model_family in ('deepseek_v4', 'glm53') and args.tokenizer_path is None:
+        args.tokenizer_path = 'none'
+    if args.model_family == 'qwen35' and args.tokenizer_path is None:
+        parser.error('--model-family qwen35 requires an explicit JSON-compatible --tokenizer-path')
 
     # Default N per benchmark (tau2 = all).
     if args.n == 0:
