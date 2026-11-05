@@ -1,0 +1,194 @@
+{
+  "config_fields": {
+    "TurnConfig": [
+      {
+        "name": "gate",
+        "default": "args_exact_strict"
+      },
+      {
+        "name": "confidence_threshold",
+        "default": 0.9
+      },
+      {
+        "name": "enable_thinking",
+        "default": false
+      },
+      {
+        "name": "first_token_timeout_s",
+        "default": 5.0
+      },
+      {
+        "name": "baseline_max_tokens",
+        "default": 1024
+      },
+      {
+        "name": "context_window_tokens",
+        "default": 32768
+      },
+      {
+        "name": "probe_max_tokens",
+        "default": 160
+      },
+      {
+        "name": "seed",
+        "default": 42
+      },
+      {
+        "name": "main_stop",
+        "default": [
+          "</tool_call>"
+        ]
+      }
+    ],
+    "RetryTurnConfig": [
+      {
+        "name": "max_retries",
+        "default": 5
+      },
+      {
+        "name": "confidence_threshold",
+        "default": 0.9
+      },
+      {
+        "name": "retry_token_step",
+        "default": 50
+      },
+      {
+        "name": "snap_to_sentence",
+        "default": true
+      },
+      {
+        "name": "probe_max_tokens",
+        "default": 100
+      },
+      {
+        "name": "probe_timeout_s",
+        "default": 0.0
+      },
+      {
+        "name": "baseline_max_tokens",
+        "default": 3072
+      },
+      {
+        "name": "context_window_tokens",
+        "default": 32768
+      },
+      {
+        "name": "enable_thinking",
+        "default": true
+      },
+      {
+        "name": "first_token_timeout_s",
+        "default": 10.0
+      },
+      {
+        "name": "seed",
+        "default": 42
+      },
+      {
+        "name": "main_stop",
+        "default": [
+          "</tool_call>"
+        ]
+      },
+      {
+        "name": "theta_decay_per_retry",
+        "default": 0.0
+      },
+      {
+        "name": "min_tokens_first_probe",
+        "default": 0
+      },
+      {
+        "name": "hybrid_name_loose_first",
+        "default": false
+      },
+      {
+        "name": "hybrid_name_threshold",
+        "default": 0.6
+      },
+      {
+        "name": "continue_after_dispatch",
+        "default": false
+      },
+      {
+        "name": "d3_set",
+        "default": null
+      },
+      {
+        "name": "d3_clear",
+        "default": null
+      }
+    ]
+  },
+  "requests": {
+    "completion_False": {
+      "model": "fixture",
+      "prompt": "fixture",
+      "temperature": 0.0,
+      "max_tokens": 16,
+      "stop": [
+        "<tool_call>"
+      ],
+      "include_stop_str_in_output": true,
+      "stream": false,
+      "seed": 42,
+      "stop_token_ids": [
+        151657
+      ],
+      "logprobs": 5
+    },
+    "chat_False": {
+      "model": "fixture",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fixture"
+        }
+      ],
+      "temperature": 0.0,
+      "max_tokens": 16,
+      "stop": [],
+      "include_stop_str_in_output": true,
+      "seed": 42,
+      "stream": false,
+      "logprobs": true,
+      "top_logprobs": 5,
+      "add_generation_prompt": true
+    },
+    "completion_True": {
+      "model": "fixture",
+      "prompt": "fixture",
+      "temperature": 0.0,
+      "max_tokens": 16,
+      "stop": [
+        "<tool_call>"
+      ],
+      "include_stop_str_in_output": true,
+      "stream": true,
+      "seed": 42,
+      "stop_token_ids": [
+        151657
+      ],
+      "logprobs": 5
+    },
+    "chat_True": {
+      "model": "fixture",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fixture"
+        }
+      ],
+      "temperature": 0.0,
+      "max_tokens": 16,
+      "stop": [],
+      "include_stop_str_in_output": true,
+      "seed": 42,
+      "stream": true,
+      "logprobs": true,
+      "top_logprobs": 5,
+      "add_generation_prompt": true
+    }
+  }
+}
