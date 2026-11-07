@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "scope": "Loader compatibility diagnosis and GPU retry; task quality is scored separately",
+  "retry_profile": "v4-02",
+  "code_commit": "30288017075c783cd83526e731e0458e779fd010",
+  "change": {
+    "before": "--safetensors-load-strategy eager",
+    "after": "--safetensors-load-strategy lazy",
+    "vllm_execution_mode": "--enforce-eager unchanged",
+    "weights_rewritten": false,
+    "installed_packages_modified": false
+  },
+  "actual_checkpoint_cpu_read": {
+    "scope": "CPU-only actual checkpoint scale tensor read; no model inference",
+    "observed_at_utc": "2026-10-31T15:30:41.516120+00:00",
+    "shard": "model-00002-of-00048.safetensors",
+    "tensor_name": "layers.0.attn.wkv.scale",
+    "stored_dtype": "F8_E8M0",
+    "torch_dtype": "torch.float8_e8m0fnu",
+    "shape": [
+      4,
+      32
+    ],
+    "bytes_read": 128,
+    "file_bytes_equal_loaded_tensor_bytes": true,
+    "tensor_bytes_sha256": "a1efa8611bd770662fcbfcadaf5293d6737ed82c4c4e82e08957185553edeec2",
+    "checkpoint_index_sha256": "98efab455cf08dfbbbaaba6f570e1bf10bf927d2b4c3c453a59c2f6f0e3be92b"
+  },
+  "raw_cpu_preflight_sha256": "4d107af2954dd2e2595f395fec6020eafd8f64e655330e0280e34a4658239f26",
+  "gpu_loading": {
+    "tensor_parallel_size": 2,
+    "physical_gpu_ids": [
+      0,
+      1
+    ],
+    "shards_loaded": 48,
+    "worker0_weight_read_s": 47.99,
+    "worker0_model_memory_gib": 73.88,
+    "server_readiness_passed": true
+  },
+  "upstream_reference": "https://github.com/huggingface/safetensors/blob/v0.8.0/bindings/python/py_src/safetensors/torch.py",
+  "api_model_inventory": {
+    "observed_at_utc": "2026-10-31T15:39:32.162633+00:00",
+    "models": [
+      {
+        "id": "deepseek-v4-flash-0731",
+        "max_model_len": 65536
+      }
+    ],
+    "raw_sha256": "8d32941f27cecadb3ab5cdde5dae16a3f05f42f2cc41704c4ed601054f54bc2e"
+  },
+  "safetensors_torch_source_sha256_before_after_equal": true,
+  "server_argument_changes": [
+    {
+      "option": "--safetensors-load-strategy",
+      "before": "eager",
+      "after": "lazy"
+    }
+  ],
+  "server_launcher_and_patch_unchanged_between_commits": true,
+  "recorded_runtime_versions_equal": true,
+  "model_config_and_index_hashes_equal": true,
+  "import_shim_hashes_equal": true,
+  "ended_at_utc": "2026-10-31T16:11:18.878188+00:00",
+  "bfcl_counts": {
+    "baseline": {
+      "observations": 5,
+      "quality_pass": 2,
+      "quality_fail": 2,
+      "unscored": 1,
+      "runtime_errors": 0,
+      "native_main_calls": 44,
+      "probes": 0,
+      "parsed_probes": 0,
+      "commits": 0,
+      "fallbacks": 0,
+      "main_usage_missing": 0,
+      "probe_usage_missing": 0,
+      "probe_errors": 0
+    },
+    "portfolio": {
+      "observations": 5,
+      "quality_pass": 2,
+      "quality_fail": 2,
+      "unscored": 1,
+      "runtime_errors": 0,
+      "native_main_calls": 46,
+      "probes": 108,
+      "parsed_probes": 108,
+      "commits": 46,
+      "fallbacks": 0,
+      "main_usage_missing": 0,
+      "probe_usage_missing": 0,
+      "probe_errors": 0
+    }
+  },
+  "gpu_hours_allocated": 1.3240340565310584,
+  "raw_server_log_sha256": "af6415c9cc11776a74d9141da1f4cb7312d1e1267f3f0ed49f8418a6097eb9f4",
+  "raw_receipt_sha256": "e66970d95634954968148b55f883a6587d456c4dff9326ede9cfbfbb4cb021e5"
+}

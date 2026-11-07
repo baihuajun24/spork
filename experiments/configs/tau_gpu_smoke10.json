@@ -1,0 +1,45 @@
+{
+  "seed": 1234,
+  "tasks": [
+    {
+      "task_id": "62",
+      "domain": "retail"
+    },
+    {
+      "task_id": "63",
+      "domain": "retail"
+    },
+    {
+      "task_id": "37",
+      "domain": "retail"
+    },
+    {
+      "task_id": "58",
+      "domain": "retail"
+    },
+    {
+      "task_id": "88",
+      "domain": "retail"
+    },
+    {
+      "task_id": "19",
+      "domain": "retail"
+    },
+    {
+      "task_id": "79",
+      "domain": "retail"
+    },
+    {
+      "task_id": "39",
+      "domain": "retail"
+    },
+    {
+      "task_id": "45",
+      "domain": "retail"
+    },
+    {
+      "task_id": "26",
+      "domain": "retail"
+    }
+  ]
+}

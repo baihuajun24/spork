@@ -1,0 +1,22 @@
+{
+  "task_id": "multi_turn_miss_param_65",
+  "scope": "Observed first-decision divergence before a speculative result commit; causal mechanism unresolved",
+  "configs": {
+    "baseline": {
+      "quality": true,
+      "first_main_text_sha256": "1142e4449bb86f8710e79555a987c3df84aed683182ece12bcbfa94e7ba35bbe",
+      "first_canonical_call_sha256": "43970af59905ec0a6229ee70f5633bcc121c2ebb0347f53a8d15614f46265556",
+      "first_user_turn_index": 0,
+      "speculative_commits_through_first_decision": 0,
+      "raw_sha256": "2a0cace9517ef93ea58c6ea3e870bc01027feb41941a64e7eaae6cd4d1441b1e"
+    },
+    "portfolio": {
+      "quality": false,
+      "first_main_text_sha256": "5bc5aacf1991e8f873374385c6cc7c3bbaa6639311838fa3d6cff75357852259",
+      "first_canonical_call_sha256": "39a7705ce735805747107c8aa00db9cfceaac128aff88203c395ab8f22ec872a",
+      "first_user_turn_index": 0,
+      "speculative_commits_through_first_decision": 0,
+      "raw_sha256": "c13429647d487d411bb32b1b3526a144b80a582c71ee9a0da3322a8937b7afe9"
+    }
+  }
+}

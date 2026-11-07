@@ -1,0 +1,183 @@
+[
+  {
+    "run": "glm-01-bfcl",
+    "config": "baseline",
+    "expected": 5,
+    "recorded": 5,
+    "status_counts": {
+      "complete": 3,
+      "incomplete": 2
+    },
+    "quality_scored": 3,
+    "quality_pass": 0,
+    "quality_fail": 3,
+    "quality_unscored": 2,
+    "selected_candidates": 0,
+    "exact_selected_candidates": 0,
+    "speculative_commits": 0,
+    "canonical_fallbacks": null,
+    "probe_errors": 0,
+    "decision_violations": 0,
+    "main_usage_missing": 0,
+    "probe_usage_missing": 0,
+    "inferred_main_budget_hits": 0
+  },
+  {
+    "run": "glm-01-bfcl",
+    "config": "portfolio",
+    "expected": 5,
+    "recorded": 5,
+    "status_counts": {
+      "complete": 4,
+      "incomplete": 1
+    },
+    "quality_scored": 4,
+    "quality_pass": 0,
+    "quality_fail": 4,
+    "quality_unscored": 1,
+    "selected_candidates": 39,
+    "exact_selected_candidates": 39,
+    "speculative_commits": 39,
+    "canonical_fallbacks": 14,
+    "probe_errors": 0,
+    "decision_violations": 0,
+    "main_usage_missing": 0,
+    "probe_usage_missing": 0,
+    "inferred_main_budget_hits": 0
+  },
+  {
+    "run": "qwen-01-bfcl",
+    "config": "baseline",
+    "expected": 10,
+    "recorded": 10,
+    "status_counts": {
+      "complete": 9,
+      "incomplete": 1
+    },
+    "quality_scored": 9,
+    "quality_pass": 3,
+    "quality_fail": 6,
+    "quality_unscored": 1,
+    "selected_candidates": 0,
+    "exact_selected_candidates": 0,
+    "speculative_commits": 0,
+    "canonical_fallbacks": null,
+    "probe_errors": 0,
+    "decision_violations": 0,
+    "main_usage_missing": 0,
+    "probe_usage_missing": 0,
+    "inferred_main_budget_hits": 2
+  },
+  {
+    "run": "qwen-01-bfcl",
+    "config": "portfolio",
+    "expected": 10,
+    "recorded": 10,
+    "status_counts": {
+      "complete": 10
+    },
+    "quality_scored": 10,
+    "quality_pass": 4,
+    "quality_fail": 6,
+    "quality_unscored": 0,
+    "selected_candidates": 88,
+    "exact_selected_candidates": 88,
+    "speculative_commits": 88,
+    "canonical_fallbacks": 12,
+    "probe_errors": 0,
+    "decision_violations": 0,
+    "main_usage_missing": 0,
+    "probe_usage_missing": 0,
+    "inferred_main_budget_hits": 2
+  },
+  {
+    "run": "qwen35-01-bfcl",
+    "config": "baseline",
+    "expected": 5,
+    "recorded": 5,
+    "status_counts": {
+      "complete": 5
+    },
+    "quality_scored": 5,
+    "quality_pass": 2,
+    "quality_fail": 3,
+    "quality_unscored": 0,
+    "selected_candidates": 0,
+    "exact_selected_candidates": 0,
+    "speculative_commits": 0,
+    "canonical_fallbacks": null,
+    "probe_errors": 0,
+    "decision_violations": 0,
+    "main_usage_missing": 0,
+    "probe_usage_missing": 0,
+    "inferred_main_budget_hits": 0
+  },
+  {
+    "run": "qwen35-01-bfcl",
+    "config": "portfolio",
+    "expected": 5,
+    "recorded": 5,
+    "status_counts": {
+      "complete": 5
+    },
+    "quality_scored": 5,
+    "quality_pass": 3,
+    "quality_fail": 2,
+    "quality_unscored": 0,
+    "selected_candidates": 42,
+    "exact_selected_candidates": 42,
+    "speculative_commits": 42,
+    "canonical_fallbacks": 1,
+    "probe_errors": 0,
+    "decision_violations": 0,
+    "main_usage_missing": 0,
+    "probe_usage_missing": 0,
+    "inferred_main_budget_hits": 0
+  },
+  {
+    "run": "v4-02-bfcl",
+    "config": "baseline",
+    "expected": 5,
+    "recorded": 5,
+    "status_counts": {
+      "complete": 4,
+      "incomplete": 1
+    },
+    "quality_scored": 4,
+    "quality_pass": 2,
+    "quality_fail": 2,
+    "quality_unscored": 1,
+    "selected_candidates": 0,
+    "exact_selected_candidates": 0,
+    "speculative_commits": 0,
+    "canonical_fallbacks": null,
+    "probe_errors": 0,
+    "decision_violations": 0,
+    "main_usage_missing": 0,
+    "probe_usage_missing": 0,
+    "inferred_main_budget_hits": 0
+  },
+  {
+    "run": "v4-02-bfcl",
+    "config": "portfolio",
+    "expected": 5,
+    "recorded": 5,
+    "status_counts": {
+      "complete": 4,
+      "incomplete": 1
+    },
+    "quality_scored": 4,
+    "quality_pass": 2,
+    "quality_fail": 2,
+    "quality_unscored": 1,
+    "selected_candidates": 46,
+    "exact_selected_candidates": 46,
+    "speculative_commits": 46,
+    "canonical_fallbacks": 0,
+    "probe_errors": 0,
+    "decision_violations": 0,
+    "main_usage_missing": 0,
+    "probe_usage_missing": 0,
+    "inferred_main_budget_hits": 0
+  }
+]

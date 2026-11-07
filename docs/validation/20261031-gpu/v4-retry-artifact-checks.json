@@ -1,0 +1,13 @@
+{
+  "scope": "Additional V4 retry artifact and release check; original 80-row audit retained separately",
+  "observed_at_utc": "2026-10-31T16:13:24.261874+00:00",
+  "per_task_raw_sha256_matches": 10,
+  "export_cli_semantic_matches": 1,
+  "allocated_gpu_ids": [
+    0,
+    1
+  ],
+  "allocated_gpu_locks_available": 6,
+  "gpu_compute_process_count": 0,
+  "core_bfcl_unified_unchanged_32d78df_to_3028801": true
+}

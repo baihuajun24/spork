@@ -22,13 +22,13 @@ RESULTS_ROOT = REPO_ROOT / "results"
 LOG_ROOT = REPO_ROOT / "memory" / "logs"
 MODEL_ROOT = Path(os.environ.get("SPORK_MODEL_ROOT", REPO_ROOT / "models"))
 QWEN3_32B_MODEL = MODEL_ROOT / "Qwen3-32B"
-TAU2_ROOT = Path(os.environ.get("SPORK_TAU2_ROOT", REPO_ROOT / "tau2-bench"))
+TAU2_ROOT = Path(os.environ.get("SPORK_TAU2_ROOT", os.environ.get("TAU2_ROOT", REPO_ROOT / "tau2-bench")))
 TAU2_SRC = TAU2_ROOT / "src"
 
 
 def add_runtime_paths() -> None:
     """Make coder scripts and tau2 source imports work."""
-    for path in (REPO_ROOT / "coder" / "scripts", TAU2_SRC):
+    for path in (REPO_ROOT, TAU2_SRC):
         s = str(path)
         if s not in sys.path:
             sys.path.insert(0, s)
