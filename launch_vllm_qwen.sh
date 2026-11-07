@@ -11,6 +11,7 @@
 #   TP          tensor-parallel size / #GPUs       (default: 1)
 #   MAX_LEN     max model length                   (default: 40960)
 #   GPU_UTIL    gpu memory utilization             (default: 0.85)
+#   SERVED_MODEL_NAME  name clients pass as --model-name (default: qwen3-32b)
 
 set -euo pipefail
 
@@ -19,6 +20,7 @@ PORT="${PORT:-8000}"
 TP="${TP:-1}"
 MAX_LEN="${MAX_LEN:-40960}"
 GPU_UTIL="${GPU_UTIL:-0.85}"
+SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen3-32b}"
 
 # vLLM serves localhost; keep loopback out of any HTTP proxy.
 export NO_PROXY="localhost,127.0.0.1${NO_PROXY:+,$NO_PROXY}"
@@ -26,7 +28,7 @@ export no_proxy="$NO_PROXY"
 
 python3 -m vllm.entrypoints.openai.api_server \
     --model "$MODEL_PATH" \
-    --served-model-name qwen3-32b \
+    --served-model-name "$SERVED_MODEL_NAME" \
     --tensor-parallel-size "$TP" \
     --dtype bfloat16 \
     --max-model-len "$MAX_LEN" \
