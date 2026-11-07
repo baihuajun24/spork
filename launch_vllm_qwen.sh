@@ -26,6 +26,7 @@ export no_proxy="$NO_PROXY"
 
 python3 -m vllm.entrypoints.openai.api_server \
     --model "$MODEL_PATH" \
+    --served-model-name qwen3-32b \
     --tensor-parallel-size "$TP" \
     --dtype bfloat16 \
     --max-model-len "$MAX_LEN" \
